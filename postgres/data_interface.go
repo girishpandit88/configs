@@ -11,7 +11,7 @@ import (
 
 type Object struct {
 	key        string
-	value      map[string]string
+	value      map[string]interface{}
 	createdAt  time.Time
 	modifiedAt time.Time
 }
@@ -28,7 +28,7 @@ func (o *Object) String() string {
 	)
 }
 
-func valueAsString(value map[string]string) string {
+func valueAsString(value map[string]interface{}) string {
 	var s string
 	for k, v := range value {
 		s += fmt.Sprintf("\n%v->%v", k, v)
@@ -65,11 +65,11 @@ func (o *Object) SetModifiedAt(modifiedAt time.Time) {
 	o.modifiedAt = modifiedAt
 }
 
-func (o *Object) Value() map[string]string {
+func (o *Object) Value() map[string]interface{} {
 	return o.value
 }
 
-func (o *Object) SetValue(value map[string]string) {
+func (o *Object) SetValue(value map[string]interface{}) {
 	o.value = value
 }
 
@@ -87,7 +87,7 @@ type Config interface {
 	GetConfigByProperty(key string, matchingValue string) (*[]Object, error)
 }
 
-func (db *DBStore) Save(key string, value map[string]string) error {
+func (db *DBStore) Save(key string, value map[string]interface{}) error {
 	object := Object{
 		key:        key,
 		value:      value,

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"log"
 	"time"
 )
 
@@ -16,60 +15,80 @@ func (o PGError) Error() string {
 }
 
 type PostgresDb struct {
-	db    *pgxpool.Pool
-	table string
+	db            *pgxpool.Pool
+	table         string
+	preparedStmts *map[string]string
 }
 
 func NewPostgresDb(url string, table string) (*PostgresDb, error) {
 	config, err := pgxpool.ParseConfig(url)
 	dbConn, err := pgxpool.ConnectConfig(context.Background(), config)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 	return &PostgresDb{
-		db:    dbConn,
-		table: table,
+		db:            dbConn,
+		table:         table,
+		preparedStmts: generatedPreparedStmtsMap(),
 	}, nil
 }
 
+func generatedPreparedStmtsMap() *map[string]string {
+	return &map[string]string{
+		"UPSERT":               upsert,
+		"SELECTBYKEY":          selectQuery,
+		"SELECTBYPROPKEYVALUE": selectByPropKeyQuery,
+	}
+}
+
 func (p *PostgresDb) Save(o *Object) error {
-	if _, err := p.db.Exec(context.Background(), generateUpsertQuery(p.table), o.Key(), o.Value(), o.CreatedAt(), o.ModifiedAt()); err != nil {
+	if _, err := p.db.Exec(
+		context.Background(),
+		p.generateQuery("UPSERT", p.table),
+		o.Key(),
+		o.Value(),
+		o.CreatedAt(),
+		o.ModifiedAt()); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (p *PostgresDb) GetByKey(key string) (*Object, error) {
-	row := p.db.QueryRow(context.Background(), generateLookupQuery(p.table), key+"%")
+	row := p.db.QueryRow(
+		context.Background(),
+		p.generateQuery("SELECTBYKEY", p.table),
+		key+"%")
 	var keyFromDB string
-	var value map[string]string
+	var value map[string]interface{}
 	var cAt, mAt time.Time
 	err := row.Scan(&keyFromDB, &value, &cAt, &mAt)
 	if err != nil {
-		log.Fatalf("error from db %s", err)
+		return nil, err
 	}
 	return &Object{createdAt: cAt, modifiedAt: mAt, key: keyFromDB, value: value}, nil
 }
 
 func (p *PostgresDb) GetByProperty(propKey string, propValueMatch string) (*[]Object, error) {
-	query, err := p.db.Query(context.Background(), generatePropLookupQuery(p.table), propKey, "%"+propValueMatch+"%")
-	defer query.Close()
+	rows, err := p.db.Query(
+		context.Background(),
+		p.generateQuery("SELECTBYPROPKEYVALUE", p.table),
+		propKey, "%"+propValueMatch+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 	var objects []Object
-	for query.Next() {
+	for rows.Next() {
 		var keyFromDB string
-		var value map[string]string
+		var value map[string]interface{}
 		var cAt, mAt time.Time
-		err := query.Scan(&keyFromDB, &value, &cAt, &mAt)
+		err := rows.Scan(&keyFromDB, &value, &cAt, &mAt)
 		if err != nil {
-			log.Fatal(err)
 			return nil, err
 		}
 		o := Object{createdAt: cAt, modifiedAt: mAt, key: keyFromDB, value: value}
 		objects = append(objects, o)
-	}
-
-	if err != nil {
-		log.Fatalf("error from db %s", err)
 	}
 	return &objects, nil
 }
@@ -81,22 +100,14 @@ func (p *PostgresDb) ExecStmt(stmt string) error {
 	return nil
 }
 
-func generatePropLookupQuery(table string) string {
-	return fmt.Sprintf(selectByPropKeyQuery, table)
-}
-
-func generateLookupQuery(table string) string {
-	return fmt.Sprintf(selectQuery, table)
-}
-
-func generateUpsertQuery(table string) string {
-	return fmt.Sprintf(upsert, table, table)
+func (p *PostgresDb) generateQuery(query string, table string) string {
+	m := *p.preparedStmts
+	s := m[query]
+	return fmt.Sprintf(s, table)
 }
 
 const (
-	upsert = `INSERT INTO %s (key, values, createdAt, modifiedAt) VALUES ($1, $2, $3, $4)
-ON CONFLICT ON CONSTRAINT %s_pkey
-DO UPDATE SET values = $2, modifiedAt = $4`
+	upsert               = `INSERT INTO %[1]s (key, values, createdAt, modifiedAt) VALUES ($1, $2, $3, $4) ON CONFLICT ON CONSTRAINT %[1]s_pkey DO UPDATE SET values = $2, modifiedAt = $4`
 	selectQuery          = `SELECT key, values, createdAt, modifiedAt from %s where key like $1`
 	selectByPropKeyQuery = `SELECT key, values, createdAt, modifiedAt from %s where values->>$1 like $2`
 )
