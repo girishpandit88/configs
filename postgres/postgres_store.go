@@ -17,7 +17,7 @@ func (o PGError) Error() string {
 type PostgresDb struct {
 	db            *pgxpool.Pool
 	table         string
-	preparedStmts *map[string]string
+	preparedStmts *map[SqlType]string
 }
 
 func NewPostgresDb(url string, table string) (*PostgresDb, error) {
@@ -33,18 +33,18 @@ func NewPostgresDb(url string, table string) (*PostgresDb, error) {
 	}, nil
 }
 
-func generatedPreparedStmtsMap() *map[string]string {
-	return &map[string]string{
-		"UPSERT":               upsert,
-		"SELECTBYKEY":          selectQuery,
-		"SELECTBYPROPKEYVALUE": selectByPropKeyQuery,
+func generatedPreparedStmtsMap() *map[SqlType]string {
+	return &map[SqlType]string{
+		UPSERT:                upsert,
+		SELECTQUERY:           selectQuery,
+		SELECTYBYPROPKEYQUERY: selectByPropKeyQuery,
 	}
 }
 
 func (p *PostgresDb) Save(o *Object) error {
 	if _, err := p.db.Exec(
 		context.Background(),
-		p.generateQuery("UPSERT", p.table),
+		p.generateQuery(UPSERT, p.table),
 		o.Key(),
 		o.Value(),
 		o.CreatedAt(),
@@ -57,7 +57,7 @@ func (p *PostgresDb) Save(o *Object) error {
 func (p *PostgresDb) GetByKey(key string) (*Object, error) {
 	row := p.db.QueryRow(
 		context.Background(),
-		p.generateQuery("SELECTBYKEY", p.table),
+		p.generateQuery(SELECTQUERY, p.table),
 		key+"%")
 	var keyFromDB string
 	var value map[string]interface{}
@@ -72,7 +72,7 @@ func (p *PostgresDb) GetByKey(key string) (*Object, error) {
 func (p *PostgresDb) GetByProperty(propKey string, propValueMatch string) (*[]Object, error) {
 	rows, err := p.db.Query(
 		context.Background(),
-		p.generateQuery("SELECTBYPROPKEYVALUE", p.table),
+		p.generateQuery(SELECTYBYPROPKEYQUERY, p.table),
 		propKey, "%"+propValueMatch+"%")
 	if err != nil {
 		return nil, err
@@ -100,7 +100,7 @@ func (p *PostgresDb) ExecStmt(stmt string) error {
 	return nil
 }
 
-func (p *PostgresDb) generateQuery(query string, table string) string {
+func (p *PostgresDb) generateQuery(query SqlType, table string) string {
 	m := *p.preparedStmts
 	s := m[query]
 	return fmt.Sprintf(s, table)
@@ -110,4 +110,12 @@ const (
 	upsert               = `INSERT INTO %[1]s (key, values, createdAt, modifiedAt) VALUES ($1, $2, $3, $4) ON CONFLICT ON CONSTRAINT %[1]s_pkey DO UPDATE SET values = $2, modifiedAt = $4`
 	selectQuery          = `SELECT key, values, createdAt, modifiedAt from %s where key like $1`
 	selectByPropKeyQuery = `SELECT key, values, createdAt, modifiedAt from %s where values->>$1 like $2`
+)
+
+type SqlType string
+
+const (
+	UPSERT                SqlType = upsert
+	SELECTQUERY           SqlType = selectQuery
+	SELECTYBYPROPKEYQUERY SqlType = selectByPropKeyQuery
 )

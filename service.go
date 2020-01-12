@@ -16,17 +16,17 @@ func main() {
 		log.Fatal(err)
 	}
 	//simple config
-	err = dba.Save("config", map[string]interface{}{"url": "http://apple.com", "address": "1 Apple Park"})
+	err = dba.Save("config", &map[string]interface{}{"url": "http://apple.com", "address": "1 Apple Park"})
 	if err != nil {
 		log.Fatal(err)
 	}
 	//simple config
-	err = dba.Save("config", map[string]interface{}{"url": "http://google.com", "address": "1600 Amphitheatre Parkway"})
+	err = dba.Save("config", &map[string]interface{}{"url": "http://google.com", "address": "1600 Amphitheatre Parkway"})
 	if err != nil {
 		log.Fatal(err)
 	}
 	//complex config
-	err = dba.Save("db", map[string]interface{}{
+	err = dba.Save("db", &map[string]interface{}{
 		"url":  "localhost",
 		"port": 5432,
 		"config": map[string]interface{}{

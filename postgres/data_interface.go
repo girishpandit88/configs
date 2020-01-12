@@ -87,10 +87,10 @@ type Config interface {
 	GetConfigByProperty(key string, matchingValue string) (*[]Object, error)
 }
 
-func (db *DBStore) Save(key string, value map[string]interface{}) error {
+func (db *DBStore) Save(key string, value *map[string]interface{}) error {
 	object := Object{
 		key:        key,
-		value:      value,
+		value:      *value,
 		createdAt:  time.Now(),
 		modifiedAt: time.Now(),
 	}
